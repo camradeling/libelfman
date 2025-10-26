@@ -72,7 +72,7 @@ ElfMan::ObjectFile::ObjectFile(const uint8_t* buffer, uint32_t total_sz, struct 
     	section_header_stream.read(shdr);
     	// create a section instance, different section types are handled inside constructor
     	std::shared_ptr<ElfMan::Section> newsection = ElfMan::Section::from_bytes(&shdr,buffer + shdr.sh_offset, shdr.sh_size, this);
-    	// we save all sections into a map with section offfset used as a key
+    	// we save all sections into a map with section offset used as a key
     	if(newsection->size() && newsection->type() != SHT_NOBITS)
     		sections.insert(std::pair<uint32_t,std::shared_ptr<ElfMan::Section>>(shdr.sh_offset, newsection));
     	newsection->index = index++;
@@ -120,6 +120,14 @@ std::vector<uint8_t> ElfMan::ObjectFile::serialize()
 			continue;
 		std::vector<uint8_t> section_data = sec->serialize();
 		// move sections if alignment requires that
+		//----------------------------------
+		// additional check for linker generated 0ed pads
+		if (object.size() != sec->offset()) {
+			LOG_DEBUG("section %d: adding zero pad from 0x%08X to 0x%08X", sec->index, object.size(), sec->offset());
+			std::vector<uint8_t> padvec(sec->offset() - object.size(), 0);
+			object.insert(object.end(), padvec.begin(), padvec.end());
+		}
+		//----------------------------------
 		if (sec->addralign() > 1)
 		{
 			int padding = object.size() % sec->addralign();
@@ -128,11 +136,12 @@ std::vector<uint8_t> ElfMan::ObjectFile::serialize()
 				std::vector<uint8_t> padvec(sec->addralign() - padding, 0);
 				object.insert(object.end(), padvec.begin(), padvec.end());
 			}
+			LOG_DEBUG("section %d: adding alignment pad from 0x%08X to 0x%08lX", sec->index, sec->offset(), object.size());
 		}
-		LOG_DEBUG("changing section %d offset from 0x%08X to 0x%08lX", sec->index, sec->offset(), object.size());
 		sec->offset(object.size());
 		object.insert(object.end(), section_data.begin(), section_data.end());
 	}
+
 	// padding for section headers table
 	int padding = object.size() % sizeof(uint32_t);
 	if (padding)
