@@ -118,12 +118,13 @@ std::vector<uint8_t> ElfMan::ObjectFile::serialize()
 		std::shared_ptr<ElfMan::Section> sec = secpair.second;
 		if(!sec->size() || sec->type() == SHT_NOBITS)
 			continue;
+		LOG_INFO("processing section %d, size %08X, offset %08X", sec->index, object.size(), sec->offset());
 		std::vector<uint8_t> section_data = sec->serialize();
 		// move sections if alignment requires that
 		//----------------------------------
 		// additional check for linker generated 0ed pads
-		if (object.size() != sec->offset()) {
-			LOG_DEBUG("section %d: adding zero pad from 0x%08X to 0x%08X", sec->index, object.size(), sec->offset());
+		if (object.size() != sec->offset()) {// && sec->type() != SHT_REL) {
+			LOG_INFO("section %d: adding zero pad from 0x%08X to 0x%08X", sec->index, object.size(), sec->offset());
 			std::vector<uint8_t> padvec(sec->offset() - object.size(), 0);
 			object.insert(object.end(), padvec.begin(), padvec.end());
 		}
@@ -294,8 +295,10 @@ std::shared_ptr<ElfMan::Symbol> ElfMan::ObjectFile::insert_undefined_global_func
 	symtab_section->symbols.push_back(newsym);
 	symtab_section->symbols_by_name.insert(std::pair(newsym->name(), newsym));
 	// updating section sizes
-	symtab_section->size(symtab_section->size() + sizeof(Elf32_Sym));
-	symbol_strtab_section->size(symbol_strtab_section->size() + name.size()+1);
+	int old_symtab_size = symtab_section->size();
+	symtab_section->size(old_symtab_size + sizeof(Elf32_Sym));
+	int old_symbol_strtab_size = symbol_strtab_section->size();
+	symbol_strtab_section->size(old_symbol_strtab_size + name.size()+1);
 	LOG_DEBUG("%s %08X %08X %08X %02X %02X %08X\n", newsym->name().c_str(),
 													newsym->symhdr.st_name,
 													newsym->symhdr.st_value,
@@ -303,6 +306,25 @@ std::shared_ptr<ElfMan::Symbol> ElfMan::ObjectFile::insert_undefined_global_func
 													newsym->symhdr.st_info,
 													newsym->symhdr.st_other,
 													newsym->symhdr.st_shndx);
+	// symtab section changed size - symbol_strtab_section and section_strtab_section should also change offset
+	symbol_strtab_section->offset(symbol_strtab_section->offset() + sizeof(Elf32_Sym));
+	section_strtab_section->offset(section_strtab_section->offset() + sizeof(Elf32_Sym) + name.size()+1);
+	// for all rel sections above the symtab and symbol_strtab sections offsets should be modified.
+	for (auto section : sections_by_index)
+	{
+		if (section->type() != SHT_REL)
+			continue;
+		if (auto relsection = std::dynamic_pointer_cast<ElfMan::RelocationSection>(section)) {
+			if (relsection->offset() >= symtab_section->offset() + old_symtab_size) {
+				LOG_INFO("1) found relocation entry offset %08X, moving to %08X", relsection->offset(), relsection->offset() + sizeof(Elf32_Sym));
+				relsection->offset(relsection->offset() + sizeof(Elf32_Sym));
+			}
+			if (relsection->offset() >= symbol_strtab_section->offset() + old_symbol_strtab_size) {
+				LOG_INFO("2) found relocation entry offset %08X, moving to %08X", relsection->offset(), relsection->offset() + name.size()+1);
+				relsection->offset(relsection->offset() + name.size()+1);
+			}
+		}
+	}
 	return std::move(newsym);
 }
 //------------------------------------------------------------------------------------------------------------------------------

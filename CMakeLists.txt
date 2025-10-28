@@ -74,6 +74,11 @@ set(insert_Sources
 add_executable(insert ${insert_Sources})
 target_link_libraries(insert PUBLIC elfman)
 
+set(insertobj_Sources
+        tests/insertobj.cpp)
+add_executable(insertobj ${insertobj_Sources})
+target_link_libraries(insertobj PUBLIC elfman)
+
 set(moverel_Sources
         tests/moverel.cpp)
 add_executable(moverel ${moverel_Sources})

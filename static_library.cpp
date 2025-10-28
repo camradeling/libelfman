@@ -99,10 +99,9 @@ std::vector<uint8_t> ElfMan::StaticLibrary::serialize()
 //------------------------------------------------------------------------------------------------------------------------------
 // Dump archive contents
 void ElfMan::StaticLibrary::dump() {
-    std::cout << "Archive contains " << objects.size() << " file(s):\n";
+    LOG_DEBUG("Archive contains %d file(s)", objects.size());
     for (auto& obj : objects) {
-        std::cout << "  " << obj->filename()
-                  << " (" << obj->size() << " bytes)\n";
+        LOG_DEBUG("%s %d", obj->filename(), obj->size());
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
